@@ -234,12 +234,14 @@ func getChangedContainers(oldPod, newPod libk8s.PodInfo) ([]*libk8s.ContainerInf
 	addedContainers := make([]*libk8s.ContainerInfo, 0)
 	removedContainers := make([]*libk8s.ContainerInfo, 0)
 	for _, c := range newPod.Containers {
+		logrus.Debugf("Checking whether to add oldPod with image ID %s to addedContainers", c.Image.ImageID)
 		if !containsContainerImage(oldPod.Containers, c.Image.ImageID) {
 			addedContainers = append(addedContainers, c)
 		}
 	}
 
 	for _, c := range oldPod.Containers {
+		logrus.Debugf("Checking whether to add newPod with image ID %s to removedContainers", c.Image.ImageID)
 		if !containsContainerImage(newPod.Containers, c.Image.ImageID) {
 			removedContainers = append(removedContainers, c)
 		}
@@ -254,6 +256,7 @@ func containsImage(images []*liboci.RegistryImage, image string) bool {
 			return true
 		}
 	}
+	logrus.Debugf("No image matches %s", image)
 
 	return false
 }
@@ -264,6 +267,7 @@ func containsContainerImage(containers []*libk8s.ContainerInfo, image string) bo
 			return true
 		}
 	}
+	logrus.Debugf("No container image matches %s", image)
 
 	return false
 }
@@ -276,6 +280,7 @@ func (p *Processor) cleanupImagesIfNeeded(removedContainers []*libk8s.ContainerI
 		for _, po := range allPods {
 			pod := po.(*corev1.Pod)
 			info := p.K8s.Client.ExtractPodInfos(*pod)
+			logrus.Debugf("Checking if image ID %s is found", c.Image.ImageID)
 			found = found || containsContainerImage(info.Containers, c.Image.ImageID)
 		}
 
@@ -345,9 +350,11 @@ func (p *Processor) runInformerAsync(informer cache.SharedIndexInformer) {
 					info := p.K8s.Client.ExtractPodInfos(*pod)
 					for _, c := range info.Containers {
 						allImages = append(allImages, c.Image)
+						logrus.Debugf("Checking if pod %s/%s with image ID %s needs to be analyzed", info.PodNamespace, info.PodName, c.Image.ImageID)
+						logrus.Debugf("Annotations: %v", info.Annotations)
 						if !containsImage(targetImages, c.Image.ImageID) && !p.K8s.HasAnnotation(info.Annotations, c) {
 							missingPods = append(missingPods, info)
-							logrus.Debugf("Pod %s/%s needs to be analyzed", info.PodNamespace, info.PodName)
+							logrus.Debugf("Pod %s/%s needs to be analyzed (due to target of type %T)", info.PodNamespace, info.PodName, t)
 							break
 						}
 					}
